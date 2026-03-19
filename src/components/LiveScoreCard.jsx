@@ -16,11 +16,12 @@ export default function LiveScoreCard({ game, index = 0 }) {
     : "";
 
   return (
-    <motion.div
+    <motion.a
+      href={`/game/${game.id}`}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.03 }}
-      className={`group relative overflow-hidden rounded-xl border bg-[var(--card)] p-4 transition-all hover:bg-[var(--card-hover)] ${
+      className={`group relative block overflow-hidden rounded-xl border bg-[var(--card)] p-4 transition-all hover:bg-[var(--card-hover)] cursor-pointer ${
         isLive
           ? "border-red-500/40 shadow-lg shadow-red-500/10"
           : "border-[var(--border)] hover:border-[var(--border-light)]"
@@ -86,7 +87,12 @@ export default function LiveScoreCard({ game, index = 0 }) {
       {isLive && (
         <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-red-500/5 to-transparent pointer-events-none" />
       )}
-    </motion.div>
+
+      {/* Click hint */}
+      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] text-[var(--dim)]">
+        View &rarr;
+      </div>
+    </motion.a>
   );
 }
 

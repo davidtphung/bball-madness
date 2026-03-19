@@ -22,6 +22,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata = {
+  metadataBase: new URL("https://bballmadness.davidtphung.com"),
   title: "THE PROCESS | March Madness 2026 Analytics — NLT143",
   description:
     "Live bracket, probability models, and game tracking for the 2026 NCAA Tournament. Hinkie/Beane methodology applied to March Madness.",
