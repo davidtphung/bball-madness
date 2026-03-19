@@ -8,10 +8,20 @@ export default function Footer() {
         </div>
         <div className="flex items-center gap-4">
           <span>March Madness 2026</span>
-          <span className="text-[var(--border)]">|</span>
+          <span className="text-[var(--border-light)]">|</span>
           <span>Data: ESPN</span>
-          <span className="text-[var(--border)]">|</span>
-          <span className="font-mono">davidtphung.com</span>
+          <span className="text-[var(--border-light)]">|</span>
+          <span>
+            Built by{" "}
+            <a
+              href="https://x.com/davidtphung"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-[var(--text)] hover:text-amber-400 transition-colors"
+            >
+              David T Phung
+            </a>
+          </span>
         </div>
       </div>
     </footer>
