@@ -1,5 +1,5 @@
 "use client";
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -385,100 +385,310 @@ function PlaysTab({ game }) {
 }
 
 function MarketTab({ kalshi, game }) {
-  const markets = kalshi?.markets || [];
-  const available = kalshi?.available || false;
+  const [kalshiData, setKalshiData] = useState(null);
+  const [kalshiLoading, setKalshiLoading] = useState(true);
+
+  // Fetch team-specific Kalshi markets live
+  useEffect(() => {
+    async function fetchMarkets() {
+      try {
+        const [awayRes, homeRes, allRes] = await Promise.allSettled([
+          fetch(`/api/kalshi?team=${encodeURIComponent(game.away.name)}`),
+          fetch(`/api/kalshi?team=${encodeURIComponent(game.home.name)}`),
+          fetch(`/api/kalshi`),
+        ]);
+
+        const awayData = awayRes.status === "fulfilled" ? await awayRes.value.json() : { markets: [] };
+        const homeData = homeRes.status === "fulfilled" ? await homeRes.value.json() : { markets: [] };
+        const allData = allRes.status === "fulfilled" ? await allRes.value.json() : { championship: [] };
+
+        // Deduplicate
+        const seen = new Set();
+        const allMarkets = [...(awayData.markets || []), ...(homeData.markets || [])].filter((m) => {
+          if (seen.has(m.ticker)) return false;
+          seen.add(m.ticker);
+          return true;
+        });
+
+        setKalshiData({
+          gameMarkets: allMarkets.filter((m) => m.type === "game"),
+          advancementMarkets: allMarkets.filter((m) => m.type === "advancement"),
+          championshipMarkets: allData.championship || [],
+          total: allMarkets.length,
+        });
+      } catch {
+        setKalshiData({ gameMarkets: [], advancementMarkets: [], championshipMarkets: [], total: 0 });
+      } finally {
+        setKalshiLoading(false);
+      }
+    }
+
+    fetchMarkets();
+    const interval = setInterval(fetchMarkets, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, [game.away.name, game.home.name]);
+
+  const isLive = game.status === "in";
+  const awaySeed = game.away.seed || 8;
+  const homeSeed = game.home.seed || 8;
+  const diff = homeSeed - awaySeed;
+  const awayProb = Math.min(97, Math.max(3, 50 + diff * 3));
+  const homeProb = 100 - awayProb;
+
+  // Compute live win prob from score if game is live
+  let liveAwayProb = awayProb;
+  let liveHomeProb = homeProb;
+  if (isLive && game.away.score !== undefined && game.home.score !== undefined) {
+    const scoreDiff = game.home.score - game.away.score;
+    const periodFactor = game.period === 2 ? 1.5 : 1;
+    liveHomeProb = Math.min(97, Math.max(3, 50 + scoreDiff * 1.2 * periodFactor));
+    liveAwayProb = 100 - liveHomeProb;
+  }
+
+  // Get latest ESPN win prob if available
+  const latestWP = game.winProbability?.length > 0
+    ? game.winProbability[game.winProbability.length - 1]
+    : null;
+  if (latestWP) {
+    liveHomeProb = latestWP.homeWinPct;
+    liveAwayProb = 100 - liveHomeProb;
+  }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-purple-400 font-mono text-sm font-bold">Kalshi</span>
-          <span className="text-[10px] uppercase tracking-widest text-[var(--dim)]">Prediction Markets</span>
+      {/* Live Win Probability — large hero display */}
+      <div className={`rounded-xl border p-6 ${
+        isLive ? "border-red-500/30 bg-gradient-to-br from-red-500/5 to-[var(--card)]" : "border-[var(--border)] bg-[var(--card)]"
+      }`}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--dim)]">
+            {isLive ? "Live Win Probability" : "Pre-Game Win Probability"}
+          </h3>
+          {isLive && (
+            <span className="flex items-center gap-1.5 text-[10px] font-bold text-red-400">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+              </span>
+              UPDATING LIVE
+            </span>
+          )}
         </div>
 
-        {available && markets.length > 0 ? (
-          <div className="space-y-2">
-            {markets.map((m, i) => (
-              <motion.div
-                key={m.ticker || i}
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="flex items-center justify-between rounded-lg bg-[var(--card)] border border-[var(--border)] p-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-white truncate">{m.title}</p>
-                  <p className="text-[10px] text-[var(--muted)] font-mono">{m.ticker}</p>
-                </div>
-                <div className="flex items-center gap-3 shrink-0 ml-3">
-                  <div className="text-center">
-                    <div className="font-mono text-lg font-bold text-green-400">
-                      {m.yesPrice != null ? `${m.yesPrice}\u00A2` : "—"}
-                    </div>
-                    <div className="text-[8px] text-green-400/60 uppercase">Yes</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-mono text-lg font-bold text-red-400">
-                      {m.noPrice != null ? `${m.noPrice}\u00A2` : "—"}
-                    </div>
-                    <div className="text-[8px] text-red-400/60 uppercase">No</div>
-                  </div>
-                  {m.volume != null && (
-                    <div className="text-center ml-2">
-                      <div className="font-mono text-xs text-[var(--dim)]">{m.volume.toLocaleString()}</div>
-                      <div className="text-[8px] text-[var(--muted)] uppercase">Vol</div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ))}
+        {/* Big probability display */}
+        <div className="grid grid-cols-[1fr_auto_1fr] gap-4 items-center mb-4">
+          <div className="text-center">
+            <div className="text-sm font-semibold text-white mb-1">
+              {game.away.seed && <span className="font-mono text-[var(--dim)] mr-1">({game.away.seed})</span>}
+              {game.away.shortName}
+            </div>
+            <motion.div
+              key={liveAwayProb}
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              className="font-mono text-4xl md:text-5xl font-black"
+              style={{ color: game.away.color }}
+            >
+              {liveAwayProb.toFixed(0)}%
+            </motion.div>
+          </div>
+
+          <div className="text-center text-lg text-[var(--muted)] font-mono">vs</div>
+
+          <div className="text-center">
+            <div className="text-sm font-semibold text-white mb-1">
+              {game.home.seed && <span className="font-mono text-[var(--dim)] mr-1">({game.home.seed})</span>}
+              {game.home.shortName}
+            </div>
+            <motion.div
+              key={liveHomeProb}
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              className="font-mono text-4xl md:text-5xl font-black"
+              style={{ color: game.home.color }}
+            >
+              {liveHomeProb.toFixed(0)}%
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Probability bar */}
+        <div className="h-3 rounded-full overflow-hidden flex">
+          <motion.div
+            animate={{ width: `${liveAwayProb}%` }}
+            transition={{ duration: 0.5 }}
+            className="h-full rounded-l-full"
+            style={{ background: game.away.color }}
+          />
+          <motion.div
+            animate={{ width: `${liveHomeProb}%` }}
+            transition={{ duration: 0.5 }}
+            className="h-full rounded-r-full"
+            style={{ background: game.home.color }}
+          />
+        </div>
+
+        {/* Source label */}
+        <div className="flex justify-between mt-2 text-[10px] text-[var(--muted)]">
+          <span>{latestWP ? "Source: ESPN Win Probability" : "Source: Seed-based model"}</span>
+          {isLive && <span>Score: {game.away.score}-{game.home.score} · {game.clock} {game.period === 1 ? "1H" : "2H"}</span>}
+        </div>
+      </div>
+
+      {/* Kalshi Prediction Markets */}
+      <div className="rounded-xl border border-purple-500/20 bg-purple-500/5 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-purple-400 font-mono text-sm font-bold">Kalshi</span>
+            <span className="text-[10px] uppercase tracking-widest text-[var(--dim)]">Prediction Markets</span>
+          </div>
+          {kalshiData && (
+            <span className="text-[10px] font-mono text-[var(--muted)]">
+              {kalshiData.total} markets found · Refreshes every 30s
+            </span>
+          )}
+        </div>
+
+        {kalshiLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+            <span className="ml-2 text-xs text-[var(--dim)]">Loading Kalshi markets...</span>
           </div>
         ) : (
-          <div className="text-center py-8">
-            <p className="text-sm text-[var(--dim)] mb-2">
-              No active Kalshi markets found for this matchup
-            </p>
-            <p className="text-xs text-[var(--muted)]">
-              Prediction markets for NCAA Tournament games may be available on Kalshi.
-              Markets typically open closer to game time.
-            </p>
+          <div className="space-y-4">
+            {/* Game-specific markets */}
+            {kalshiData?.gameMarkets?.length > 0 && (
+              <MarketSection
+                title="Game Markets"
+                markets={kalshiData.gameMarkets}
+                accentColor="text-green-400"
+              />
+            )}
+
+            {/* Advancement markets */}
+            {kalshiData?.advancementMarkets?.length > 0 && (
+              <MarketSection
+                title="Advancement Markets"
+                markets={kalshiData.advancementMarkets}
+                accentColor="text-cyan-400"
+              />
+            )}
+
+            {/* Championship markets for these teams */}
+            {kalshiData?.championshipMarkets?.length > 0 && (
+              <MarketSection
+                title="Championship Markets"
+                markets={kalshiData.championshipMarkets}
+                accentColor="text-amber-400"
+              />
+            )}
+
+            {/* No markets found */}
+            {(!kalshiData || kalshiData.total === 0) && (
+              <div className="text-center py-6">
+                <p className="text-sm text-[var(--dim)] mb-2">
+                  No active Kalshi markets found for {game.away.shortName} vs {game.home.shortName}
+                </p>
+                <p className="text-xs text-[var(--muted)]">
+                  Prediction markets may not be available for this specific matchup.
+                  Check Kalshi for broader NCAA Tournament markets.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Implied odds from seed */}
+      {/* Odds comparison — Model vs Market */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--dim)] mb-3">
-          Model-Implied Win Probability
+          Odds Comparison
         </h3>
-        <div className="grid grid-cols-2 gap-4">
-          {[game.away, game.home].map((team) => {
-            const seed = team.seed || 8;
-            const otherSeed = team === game.away ? (game.home.seed || 8) : (game.away.seed || 8);
-            const diff = otherSeed - seed;
-            const prob = Math.min(97, Math.max(3, 50 + diff * 3));
-            return (
-              <div key={team.abbreviation} className="text-center">
-                <div className="text-sm font-semibold text-white mb-1">
-                  {team.seed && <span className="font-mono text-[var(--dim)] mr-1">({team.seed})</span>}
-                  {team.shortName}
-                </div>
-                <div className="font-mono text-3xl font-black" style={{ color: team.color }}>
-                  {prob}%
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-[var(--bg)] overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${prob}%` }}
-                    transition={{ duration: 0.8 }}
-                    className="h-full rounded-full"
-                    style={{ background: team.color }}
-                  />
-                </div>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-[var(--muted)] mb-2">Source</div>
+            <div className="text-xs text-[var(--dim)]">Seed Model</div>
+            {latestWP && <div className="text-xs text-[var(--dim)] mt-1">ESPN Live</div>}
+            {kalshiData?.gameMarkets?.[0] && <div className="text-xs text-purple-400 mt-1">Kalshi</div>}
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-[var(--muted)] mb-2">{game.away.shortName}</div>
+            <div className="font-mono text-sm font-bold text-white">{awayProb}%</div>
+            {latestWP && <div className="font-mono text-sm font-bold text-white mt-1">{(100 - latestWP.homeWinPct).toFixed(0)}%</div>}
+            {kalshiData?.gameMarkets?.[0] && (
+              <div className="font-mono text-sm font-bold text-purple-400 mt-1">
+                {kalshiData.gameMarkets[0].yesPrice || "—"}{kalshiData.gameMarkets[0].yesPrice ? "¢" : ""}
               </div>
-            );
-          })}
+            )}
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-widest text-[var(--muted)] mb-2">{game.home.shortName}</div>
+            <div className="font-mono text-sm font-bold text-white">{homeProb}%</div>
+            {latestWP && <div className="font-mono text-sm font-bold text-white mt-1">{latestWP.homeWinPct.toFixed(0)}%</div>}
+            {kalshiData?.gameMarkets?.[0] && (
+              <div className="font-mono text-sm font-bold text-purple-400 mt-1">
+                {kalshiData.gameMarkets[0].noPrice || "—"}{kalshiData.gameMarkets[0].noPrice ? "¢" : ""}
+              </div>
+            )}
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MarketSection({ title, markets, accentColor }) {
+  return (
+    <div>
+      <div className={`text-[10px] uppercase tracking-widest ${accentColor} mb-2`}>{title}</div>
+      <div className="space-y-2">
+        {markets.map((m, i) => (
+          <motion.div
+            key={m.ticker || i}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="flex items-center justify-between rounded-lg bg-[var(--card)] border border-[var(--border)] p-3 hover:border-[var(--border-light)] transition-colors"
+          >
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-white truncate">{m.title}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] text-[var(--muted)] font-mono">{m.ticker}</span>
+                {m.type && (
+                  <span className={`text-[8px] uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                    m.type === "game" ? "bg-green-500/10 text-green-400"
+                    : m.type === "championship" ? "bg-amber-500/10 text-amber-400"
+                    : "bg-cyan-500/10 text-cyan-400"
+                  }`}>
+                    {m.type}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3 shrink-0 ml-3">
+              <div className="text-center min-w-[48px]">
+                <div className="font-mono text-lg font-bold text-green-400">
+                  {m.yesPrice != null ? `${m.yesPrice}\u00A2` : "—"}
+                </div>
+                <div className="text-[8px] text-green-400/60 uppercase">Yes</div>
+              </div>
+              <div className="text-center min-w-[48px]">
+                <div className="font-mono text-lg font-bold text-red-400">
+                  {m.noPrice != null ? `${m.noPrice}\u00A2` : "—"}
+                </div>
+                <div className="text-[8px] text-red-400/60 uppercase">No</div>
+              </div>
+              {m.volume != null && m.volume > 0 && (
+                <div className="text-center min-w-[48px]">
+                  <div className="font-mono text-xs text-[var(--dim)]">
+                    {m.volume >= 1000 ? `${(m.volume / 1000).toFixed(1)}K` : m.volume.toLocaleString()}
+                  </div>
+                  <div className="text-[8px] text-[var(--muted)] uppercase">Vol</div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        ))}
       </div>
     </div>
   );
