@@ -1,12 +1,26 @@
 "use client";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useLiveScores } from "@/hooks/useLiveScores";
+import { useLiveStandings } from "@/hooks/useLiveStandings";
 import LiveScoreCard from "@/components/LiveScoreCard";
 import StatBox from "@/components/StatBox";
-import { RECORD, UPSET_PICKS, BRACKET } from "@/lib/bracket-data";
+import { BRACKET } from "@/lib/bracket-data";
 
 export default function HomePage() {
   const { games, loading, updated, hasLiveGames, error } = useLiveScores(60000);
+  const { standings } = useLiveStandings(60000);
+
+  const record = standings?.record || { correct: 0, wrong: 0, pending: 63 };
+  const upsetsHit = standings?.upsetsHit || 0;
+  const upsetPicks = standings?.upsetPicks || [];
+  const results = standings?.results || [];
+  const probabilities = standings?.probabilities || {};
+  const eliminated = new Set(standings?.eliminated || []);
+
+  // Live title prob for Arizona
+  const arizonaTitleProb = probabilities["Arizona"]
+    ? (probabilities["Arizona"].titleProb * 100).toFixed(0)
+    : "22";
 
   const liveGames = games.filter((g) => g.status === "in");
   const upcomingGames = games.filter((g) => g.status === "pre");
@@ -47,15 +61,20 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats row — all live */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
-          <StatBox label="Record" value={`${RECORD.correct}-${RECORD.wrong}`} color="text-green-400" delay={0} />
-          <StatBox label="Pending" value={RECORD.pending} color="text-blue-400" delay={0.05} />
-          <StatBox label="Upsets Called" value={RECORD.upsetsCalled} color="text-red-400" delay={0.1} />
+          <StatBox label="Record" value={`${record.correct}-${record.wrong}`} color="text-green-400" delay={0} />
+          <StatBox label="Pending" value={record.pending} color="text-blue-400" delay={0.05} />
+          <StatBox
+            label="Upsets Hit"
+            value={`${upsetsHit}/7`}
+            color="text-red-400"
+            delay={0.1}
+          />
           <StatBox label="Champion" value={BRACKET.champion} color="text-amber-400" delay={0.15} />
           <StatBox
             label="Title Prob"
-            value="22"
+            value={arizonaTitleProb}
             suffix="%"
             color="text-amber-400"
             delay={0.2}
@@ -63,7 +82,44 @@ export default function HomePage() {
         </div>
       </motion.div>
 
-      {/* Upset picks banner */}
+      {/* Results ticker — shows completed bracket matchups */}
+      {results.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-8 rounded-xl border border-green-500/20 bg-green-500/5 p-4"
+        >
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-green-400 mb-3">
+            Bracket Results — {record.correct} Correct, {record.wrong} Wrong
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {results.map((r, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.15 + i * 0.03 }}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 ${
+                  r.correct
+                    ? "border-green-500/20 bg-[var(--card)]"
+                    : "border-red-500/20 bg-red-500/5"
+                }`}
+              >
+                <span className={`text-[10px] font-bold ${r.correct ? "text-green-400" : "text-red-400"}`}>
+                  {r.correct ? "✓" : "✗"}
+                </span>
+                <span className="text-xs font-semibold text-white">{r.winner}</span>
+                <span className="text-[10px] text-[var(--dim)]">def.</span>
+                <span className="text-xs text-[var(--dim)] line-through">{r.loser}</span>
+                <span className="font-mono text-[10px] text-[var(--muted)]">{r.score}</span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Upset picks banner — now live status */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -71,22 +127,47 @@ export default function HomePage() {
         className="mb-8 rounded-xl border border-red-500/20 bg-red-500/5 p-4"
       >
         <h2 className="text-xs font-semibold uppercase tracking-widest text-red-400 mb-3">
-          Upset Picks — 7 Called
+          Upset Picks — {upsetsHit} Hit / 7 Called
         </h2>
         <div className="flex flex-wrap gap-2">
-          {UPSET_PICKS.map((u, i) => (
+          {(upsetPicks.length > 0
+            ? upsetPicks
+            : [
+                { team: "VCU", seed: 11, over: "North Carolina", overSeed: 6, region: "South", status: "pending" },
+                { team: "Saint Louis", seed: 9, over: "Georgia", overSeed: 8, region: "Midwest", status: "pending" },
+                { team: "Santa Clara", seed: 10, over: "Kentucky", overSeed: 7, region: "Midwest", status: "pending" },
+                { team: "Akron", seed: 12, over: "Texas Tech", overSeed: 5, region: "Midwest", status: "pending" },
+                { team: "Utah State", seed: 9, over: "Villanova", overSeed: 8, region: "West", status: "pending" },
+                { team: "Iowa", seed: 9, over: "Clemson", overSeed: 8, region: "South", status: "pending" },
+                { team: "Missouri", seed: 10, over: "Miami (FL)", overSeed: 7, region: "West", status: "pending" },
+              ]
+          ).map((u, i) => (
             <motion.div
               key={i}
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.3 + i * 0.05 }}
-              className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-[var(--card)] px-3 py-1.5"
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 ${
+                u.status === "hit"
+                  ? "border-green-500/30 bg-green-500/10"
+                  : u.status === "missed"
+                  ? "border-red-500/30 bg-red-500/10 opacity-50"
+                  : u.status === "alive"
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "border-red-500/20 bg-[var(--card)]"
+              }`}
             >
+              {u.status === "hit" && <span className="text-[10px] text-green-400">✓</span>}
+              {u.status === "missed" && <span className="text-[10px] text-red-400">✗</span>}
+              {u.status === "alive" && <span className="text-[10px] text-amber-400">●</span>}
               <span className="font-mono text-xs font-bold text-red-400">#{u.seed}</span>
-              <span className="text-xs font-semibold text-white">{u.team}</span>
+              <span className={`text-xs font-semibold ${
+                u.status === "missed" ? "text-[var(--dim)] line-through" : "text-white"
+              }`}>{u.team}</span>
               <span className="text-[10px] text-[var(--dim)]">over</span>
-              <span className="text-xs text-[var(--dim)]">#{u.overSeed} {u.over}</span>
-              <span className="text-[10px] text-[var(--muted)]">({u.region})</span>
+              <span className={`text-xs ${
+                u.status === "hit" ? "text-[var(--dim)] line-through" : "text-[var(--dim)]"
+              }`}>#{u.overSeed} {u.over}</span>
             </motion.div>
           ))}
         </div>
