@@ -3,37 +3,42 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 
 const links = [
-  { href: "/", label: "Live Scores", icon: "⚡" },
-  { href: "/bracket", label: "Bracket", icon: "🏀" },
-  { href: "/model", label: "Model", icon: "📊" },
-  { href: "/history", label: "History", icon: "📈" },
+  { href: "/", label: "Live", fullLabel: "Live Scores", icon: "⚡" },
+  { href: "/bracket", label: "Bracket", fullLabel: "Bracket", icon: "🏀" },
+  { href: "/model", label: "Model", fullLabel: "Model", icon: "📊" },
+  { href: "/history", label: "History", fullLabel: "History", icon: "📈" },
 ];
 
 export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="mt-2 flex gap-1 overflow-x-auto scrollbar-hide" role="navigation" aria-label="Main navigation">
+    <nav
+      className="mt-1.5 md:mt-2 flex gap-0.5 overflow-x-auto scrollbar-hide -mx-1 px-1"
+      role="navigation"
+      aria-label="Main navigation"
+    >
       {links.map((link) => {
         const isActive = pathname === link.href;
         return (
           <a
             key={link.href}
             href={link.href}
-            className={`relative flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            className={`relative flex items-center gap-1 md:gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 md:py-2.5 text-xs md:text-sm font-medium transition-all press-scale ${
               isActive
                 ? "text-white"
-                : "text-[var(--dim)] hover:text-[var(--text)] hover:bg-white/5"
+                : "text-[var(--dim)] active:text-[var(--text)]"
             }`}
             aria-current={isActive ? "page" : undefined}
           >
-            <span className="text-base" aria-hidden="true">{link.icon}</span>
-            {link.label}
+            <span className="text-sm md:text-base" aria-hidden="true">{link.icon}</span>
+            <span className="md:hidden">{link.label}</span>
+            <span className="hidden md:inline">{link.fullLabel}</span>
             {isActive && (
               <motion.div
                 layoutId="nav-indicator"
-                className="absolute inset-0 rounded-lg bg-white/10 border border-white/10"
-                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                className="absolute inset-0 rounded-xl bg-white/[0.07] border border-white/[0.06]"
+                transition={{ type: "spring", stiffness: 500, damping: 35 }}
               />
             )}
           </a>
